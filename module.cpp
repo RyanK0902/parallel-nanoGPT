@@ -94,24 +94,27 @@ torch::Tensor myNaiveAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
     // -------- YOUR CODE HERE  -------- //
     for (int b = 0; b < B; b++) {
         for (int h = 0; h < H; h++) {
-
             // have all tokens see each other 
-            std::vector<float> expSums(N) 
+            // -> NOTE: a 2D matrix multiplication requires O(n^3) FLOPS
             for (int i = 0; i < N; i++) {
-                
-                float expSum = 0.0  // normalization factor 
-                for (int j = 0; j < d; j++) {
-                    float qVal = fourDimRead(Q, b, h, i, j, H, N, d);
-                    float kVal = fourDimRead(K, b, h, j, i, H, d, N);   // TODO: need to check this indexing
-                    float expVal = std::exp(qVal * kVal);
-                    fourDimWrite(QK_t, b, h, i, j, H, N, d, expVal); 
-                    expSum += expVal;
+                for (int ii = 0; ii < N; ii++) { 
+            
+                    // updating a single elem in QK^T
+                    float elem = 0.0;  
+                    for (int j = 0; j < d; j++) {
+                        float qVal = fourDimRead(Q, b, h, i, j, H, N, d);
+                        float kVal = fourDimRead(K, b, h, j, ii, H, d, N);   // TODO: need to check this indexing
+                        elem += qVal * kVal;
+                    }
+                    twoDimWrite(QK_t, i, ii, N);
                 }
-                expSums[i] = expSum;
             }
+
+
+
+            // normalize to get softmax probs
+            // -> NOTE: this is another loop over N dimensions
             for (int i = 0; i < N; i++) {
-                // normalize to get softmax probs
-                // NOTE: this is another loop for N dimensions
                 for (int ii = 0; ii < N; ii++) {   
                     float expVal = twoDimRead(QK_t, i, ii, N);
                     expVal /= expSums[i];   
