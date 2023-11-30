@@ -27,12 +27,14 @@ inline void twoDimWrite(std::vector<float> &tensor, int &x, int &y, const int &s
 // Step #2: Implement Read/Write Accessors for a 4D Tensor
 inline float fourDimRead(std::vector<float> &tensor, int &x, int &y, int &z, int &b, 
         const int &sizeX, const int &sizeY, const int &sizeZ) {
-    return 0.0;
+    int index = x * (sizeX * sizeY * sizeZ) + y * (sizeY * sizeZ) + z * sizeZ + b;
+    return tensor[index];
 }
 
 inline void fourDimWrite(std::vector<float> &tensor, int &x, int &y, int &z, int &b, 
         const int &sizeX, const int &sizeY, const int &sizeZ, float &val) {
-    return; 
+    int index = x * (sizeX * sizeY * sizeZ) + y * (sizeY * sizeZ) + z * sizeZ + b;
+    tensor[index] = val;
 }
 
 // DO NOT EDIT THIS FUNCTION //
@@ -56,15 +58,15 @@ std::vector<float> formatTensor(torch::Tensor tensor) {
  * other and thus can be parallelized.
  *
  * H (Number of Heads) - Each head runs on its own set of Q, K, V matrices. This effectively allows each head
- * to operate the same attention algorithm, but each with each head using different hyperparameters. These
+ * to operate the same attention algorithm, but with each head using different hyperparameters. These
  * allow each head to have their own definition of what relevance is when looking at a token. These heads
- * can operate independently of one another and thus can be parallized.
+ * can operate independently of one another and thus can be parallelized.
  *
  * N (Sequence Length) - The number of tokens. You may think of this as the number of words in a sample.
  *
  * d (Embedding Dimensionality) - The number of features each token encodes per attention head. Let's
  * say I encoded a word using the follow (length, number of vowels, has a capital letters). The
- * emvedded dimensionaliy would be 3.
+ * embedded dimensionaliy would be 3.
  * */
 
 // ---------------------------------------------------------- //
@@ -89,40 +91,38 @@ torch::Tensor myNaiveAttention(torch::Tensor QTensor, torch::Tensor KTensor, tor
     //Format QK_t Tensor into a 2D vector.
     std::vector<float> QK_t = formatTensor(QK_tTensor);
     
-    /* Here is an example of how to read/write 0's to  Q (B, H, N, d) using the 4D accessors
-
-        //loop over Batch Size
-         for (int b = 0; b < B; b++) {
-
-             //loop over Heads
-             for (int h = 0; h < H; h++) {
-
-                 //loop over Sequence Length
-                 for (int i = 0; i < N; i++) {
-
-                     //loop over Embedding Dimensionality
-                     for (int j = 0; j < d; j++) {
-                        float val = fourDimRead(Q, b, h, i, j, H, N, d);
-                        val = 0.0;
-                        fourDimWrite(Q, b, h, i, j, H, N, d, val);
-                     }
-                 }
-             }
-         }
-    */
-
-    /* Here is an example of how to read/write 0's to  QK_t (N, N) using the 2D accessors
-
-           for (int i = 0; i < N; i++) {
-	       for (int j = 0; j < N; j++) {
-	           float val = twoDimRead(QK_t, i, j, N);
-               val = 0.0;
-	           twoDimWrite(QK_t, i, j, N, val);
-             }
-         }
-    */
-    
     // -------- YOUR CODE HERE  -------- //
+    for (int b = 0; b < B; b++) {
+        for (int h = 0; h < H; h++) {
+
+            // have all tokens see each other 
+            std::vector<float> expSums(N) 
+            for (int i = 0; i < N; i++) {
+                
+                float expSum = 0.0  // normalization factor 
+                for (int j = 0; j < d; j++) {
+                    float qVal = fourDimRead(Q, b, h, i, j, H, N, d);
+                    float kVal = fourDimRead(K, b, h, j, i, H, d, N);   // TODO: need to check this indexing
+                    float expVal = std::exp(qVal * kVal);
+                    fourDimWrite(QK_t, b, h, i, j, H, N, d, expVal); 
+                    expSum += expVal;
+                }
+                expSums[i] = expSum;
+            }
+            for (int i = 0; i < N; i++) {
+                // normalize to get softmax probs
+                // NOTE: this is another loop for N dimensions
+                for (int ii = 0; ii < N; ii++) {   
+                    float expVal = twoDimRead(QK_t, i, ii, N);
+                    expVal /= expSums[i];   
+                    twoDimWrite(QK_t, i, ii, expVal);
+                } 
+            }
+                    // TODO: can this be placed in the loop???
+                // aggregate the values based on the probs
+                float vVal = fourDimRead(V, b, h, i, )  
+        }
+    }
     
     // DO NOT EDIT THIS RETURN STATEMENT //
     // It formats your C++ Vector O back into a Tensor of Shape (B, H, N, d) and returns it //
